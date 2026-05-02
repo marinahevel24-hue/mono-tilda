@@ -1,53 +1,59 @@
 const express = require("express");
+const bodyParser = require("body-parser");
 const crypto = require("crypto");
 
 const app = express();
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use(bodyParser.json());
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+const public_key = process.env.LIQPAY_PUBLIC;
+const private_key = process.env.LIQPAY_PRIVATE;
 
-function base64(str) {
-  return Buffer.from(str).toString("base64");
-}
+// 👉 ВОТ ГЛАВНОЕ — маршрут для Tilda
+app.post("/tilda", (req, res) => {
+    try {
+        let amount = 0;
 
-function sign(data) {
-  return crypto
-    .createHash("sha1")
-    .update(process.env.LIQPAY_PRIVATE + data + process.env.LIQPAY_PRIVATE)
-    .digest("base64");
-}
+        if (req.body.products) {
+            req.body.products.forEach(p => {
+                amount += Number(p.price) * Number(p.quantity);
+            });
+        } else {
+            amount = Number(req.body.amount || 1);
+        }
 
-function createLiqPayForm(amount) {
-  const json = {
-    public_key: process.env.LIQPAY_PUBLIC,
-    version: 3,
-    action: "pay",
-    amount: Number(amount),
-    currency: "UAH",
-    description: "Оплата замовлення",
-    order_id: "order_" + Date.now(),
-    result_url: "https://google.com"
-  };
+        const data = {
+            public_key: public_key,
+            version: "3",
+            action: "pay",
+            amount: amount,
+            currency: "UAH",
+            description: "Оплата заказа",
+            order_id: Date.now().toString()
+        };
 
-  const data = base64(JSON.stringify(json));
-  const signature = sign(data);
+        const data_base64 = Buffer.from(JSON.stringify(data)).toString("base64");
 
-  return `
-    <form id="liqpay" method="POST" action="https://www.liqpay.ua/api/3/checkout">
-      <input type="hidden" name="data" value="${data}" />
-      <input type="hidden" name="signature" value="${signature}" />
-    </form>
-    <script>document.getElementById("liqpay").submit();</script>
-  `;
-}
+        const signature = crypto
+            .createHash("sha1")
+            .update(private_key + data_base64 + private_key)
+            .digest("base64");
+
+        res.send(`
+            <form method="POST" action="https://www.liqpay.ua/api/3/checkout">
+                <input type="hidden" name="data" value="${data_base64}" />
+                <input type="hidden" name="signature" value="${signature}" />
+            </form>
+            <script>document.forms[0].submit();</script>
+        `);
+
+    } catch (e) {
+        res.send("Ошибка");
+    }
+});
 
 app.get("/", (req, res) => {
-  res.send("Server is working");
+    res.send("Server is working");
 });
 
-app.get("/pay", (req, res) => {
-  const amount = req.query.amount || 1;
-  res.send(createLiqPayForm(amount));
-});
-
-app.listen(process.env.PORT || 3000);
+app.listen(3000);
