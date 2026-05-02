@@ -1,5 +1,5 @@
-import express from "express";
-import crypto from "crypto";
+const express = require("express");
+const crypto = require("crypto");
 
 const app = express();
 
@@ -12,7 +12,7 @@ function base64(str) {
 
 function sign(data) {
   return crypto
-    .createHash("sha3-256")
+    .createHash("sha1")
     .update(process.env.LIQPAY_PRIVATE + data + process.env.LIQPAY_PRIVATE)
     .digest("base64");
 }
@@ -20,13 +20,13 @@ function sign(data) {
 function createLiqPayForm(amount) {
   const json = {
     public_key: process.env.LIQPAY_PUBLIC,
-    version: 7,
+    version: 3,
     action: "pay",
     amount: Number(amount),
     currency: "UAH",
-    description: "Оплата замовлення Secret Store",
+    description: "Оплата замовлення",
     order_id: "order_" + Date.now(),
-    result_url: "https://secretstore.com.ua"
+    result_url: "https://google.com"
   };
 
   const data = base64(JSON.stringify(json));
@@ -47,11 +47,6 @@ app.get("/", (req, res) => {
 
 app.get("/pay", (req, res) => {
   const amount = req.query.amount || 1;
-  res.send(createLiqPayForm(amount));
-});
-
-app.post("/create-payment", (req, res) => {
-  const amount = req.body.amount  req.body.payment?.amount  1;
   res.send(createLiqPayForm(amount));
 });
 
