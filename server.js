@@ -1,41 +1,45 @@
 import express from "express";
+import crypto from "crypto";
 
 const app = express();
-
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-app.post("/create-payment", async (req, res) => {
-  const amount = Number(req.body.amount  req.body.payment?.amount  0);
+function base64(str) {
+  return Buffer.from(str).toString("base64");
+}
 
-  if (!amount) {
-    return res.status(400).send("Не отримав суму замовлення");
-  }
+function sign(data) {
+  return crypto
+    .createHash("sha3-256")
+    .update(process.env.LIQPAY_PRIVATE + data + process.env.LIQPAY_PRIVATE)
+    .digest("base64");
+}
 
-  const response = await fetch("https://api.monobank.ua/api/merchant/invoice/create", {
-    method: "POST",
-    headers: {
-      "X-Token": process.env.MONO_TOKEN,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      amount: Math.round(amount * 100),
-      ccy: 980,
-      merchantPaymInfo: {
-        reference: "order_" + Date.now(),
-        destination: "Оплата замовлення"
-      },
-      redirectUrl: "https://secretstore.com.ua"
-    })
-  });
+app.post("/create-payment", (req, res) => {
+  const amount = Number(req.body.amount || 1);
 
-  const data = await response.json();
+  const json = {
+    public_key: process.env.LIQPAY_PUBLIC,
+    version: 7,
+    action: "pay",
+    amount: amount,
+    currency: "UAH",
+    description: "Оплата замовлення",
+    order_id: "order_" + Date.now(),
+    result_url: "https://secretstore.com.ua"
+  };
 
-  if (!data.pageUrl) {
-    return res.status(500).send("Mono не створив оплату");
-  }
+  const data = base64(JSON.stringify(json));
+  const signature = sign(data);
 
-  res.redirect(data.pageUrl);
+  res.send(`
+    <form id="liqpay" method="POST" action="https://www.liqpay.ua/api/3/checkout">
+      <input type="hidden" name="data" value="${data}" />
+      <input type="hidden" name="signature" value="${signature}" />
+    </form>
+    <script>document.getElementById("liqpay").submit();</script>
+  `);
 });
 
 app.listen(process.env.PORT || 3000);
