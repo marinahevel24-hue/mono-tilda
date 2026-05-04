@@ -3,16 +3,20 @@ const fetch = require("node-fetch");
 
 const app = express();
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
+// проверка
 app.get("/", (req, res) => {
   res.send("Server is working");
 });
 
-// 👉 ПРИЕМ ДАННЫХ ОТ TILDA
-app.post("/mono-webhook", async (req, res) => {
+// 👉 ОСНОВНОЙ ОБРАБОТЧИК ОТ TILDA
+app.post("/tilda", async (req, res) => {
   try {
-    // 👉 Tilda присылает данные заказа
-    const amount = Number(req.body.Amount) || 100;
+    console.log("TILDA:", req.body);
+
+    // 👉 берём сумму из формы Tilda
+    const amount = Number(req.body.Sum) || 100;
 
     const response = await fetch("https://api.monobank.ua/api/merchant/invoice/create", {
       method: "POST",
@@ -34,16 +38,24 @@ app.post("/mono-webhook", async (req, res) => {
 
     const data = await response.json();
 
-    // 👉 ВАЖНО: возвращаем ссылку оплаты
-    res.json({
-      success: true,
-      payment_url: data.pageUrl,
-    });
+    if (!data.pageUrl) {
+      console.log("MONO ERROR:", data);
+      return res.status(500).send("Mono error");
+    }
+
+    // 👉 ГЛАВНОЕ: СРАЗУ РЕДИРЕКТ НА ОПЛАТУ
+    res.redirect(data.pageUrl);
 
   } catch (err) {
-    console.log(err);
-    res.status(500).json({ error: "Server error" });
+    console.log("SERVER ERROR:", err);
+    res.status(500).send("Server error");
   }
+});
+
+// webhook от mono
+app.post("/mono-webhook", (req, res) => {
+  console.log("MONO WEBHOOK:", req.body);
+  res.sendStatus(200);
 });
 
 app.listen(process.env.PORT || 3000);
