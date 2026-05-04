@@ -9,9 +9,9 @@ app.get("/", (req, res) => {
   res.send("Server is working");
 });
 
-app.get("/pay", async (req, res) => {
+async function createMonoPayment(amount, res) {
   try {
-    const amount = Number(req.query.amount || 100);
+    const finalAmount = Number(amount || 100);
 
     const response = await fetch("https://api.monobank.ua/api/merchant/invoice/create", {
       method: "POST",
@@ -20,13 +20,13 @@ app.get("/pay", async (req, res) => {
         "X-Token": process.env.MONO_TOKEN
       },
       body: JSON.stringify({
-        amount: Math.round(amount * 100),
+        amount: Math.round(finalAmount * 100),
         ccy: 980,
         merchantPaymInfo: {
           reference: "order_" + Date.now(),
           destination: "Оплата замовлення Secret Store"
         },
-        redirectUrl: "https://secretstore.com.ua",
+        redirectUrl: "https://secretstore.com.ua/thank-you",
         webHookUrl: "https://mono-tilda.onrender.com/mono-webhook"
       })
     });
@@ -37,10 +37,38 @@ app.get("/pay", async (req, res) => {
       return res.status(500).send("Mono error: " + JSON.stringify(data));
     }
 
-    res.redirect(data.pageUrl);
+    return res.redirect(data.pageUrl);
   } catch (err) {
-    res.status(500).send("Server error");
+    return res.status(500).send("Server error: " + err.message);
   }
+}
+
+app.get("/pay", async (req, res) => {
+  return createMonoPayment(req.query.amount, res);
+});
+
+app.post("/pay", async (req, res) => {
+  const amount =
+    req.body.amount ||
+    req.body.payment_amount ||
+    req.body["payment[amount]"] ||
+    req.body.order_sum ||
+    req.body.price ||
+    100;
+
+  return createMonoPayment(amount, res);
+});
+
+app.post("/tilda", async (req, res) => {
+  const amount =
+    req.body.amount ||
+    req.body.payment_amount ||
+    req.body["payment[amount]"] ||
+    req.body.order_sum ||
+    req.body.price ||
+    100;
+
+  return createMonoPayment(amount, res);
 });
 
 app.post("/mono-webhook", (req, res) => {
