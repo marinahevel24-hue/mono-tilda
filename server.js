@@ -1,51 +1,51 @@
 const express = require("express");
-const crypto = require("crypto");
 
 const app = express();
 
-function base64(str) {
-  return Buffer.from(str).toString("base64");
-}
-
-function sign(data) {
-  return crypto
-    .createHash("sha1")
-    .update(process.env.LIQPAY_PRIVATE + data + process.env.LIQPAY_PRIVATE)
-    .digest("base64");
-}
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 app.get("/", (req, res) => {
   res.send("Server is working");
 });
 
-app.get("/pay", (req, res) => {
-  const amount = req.query.amount || 100;
+app.get("/pay", async (req, res) => {
+  try {
+    const amount = Number(req.query.amount || 100);
 
-  const json = {
-    public_key: process.env.LIQPAY_PUBLIC,
-    version: 3,
-    action: "pay",
-    amount: amount,
-    currency: "UAH",
-    description: "Оплата заказа",
-    order_id: "order_" + Date.now(),
-    result_url: "https://your-site.com"
-  };
+    const response = await fetch("https://api.monobank.ua/api/merchant/invoice/create", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Token": process.env.MONO_TOKEN
+      },
+      body: JSON.stringify({
+        amount: Math.round(amount * 100),
+        ccy: 980,
+        merchantPaymInfo: {
+          reference: "order_" + Date.now(),
+          destination: "Оплата замовлення Secret Store"
+        },
+        redirectUrl: "https://secretstore.com.ua",
+        webHookUrl: "https://mono-tilda.onrender.com/mono-webhook"
+      })
+    });
 
-  const data = base64(JSON.stringify(json));
-  const signature = sign(data);
+    const data = await response.json();
 
-  res.send(`
-    <form id="liqpay" method="POST" action="https://www.liqpay.ua/api/3/checkout">
-      <input type="hidden" name="data" value="${data}" />
-      <input type="hidden" name="signature" value="${signature}" />
-    </form>
-    <script>
-      document.getElementById("liqpay").submit();
-    </script>
-  `);
+    if (!data.pageUrl) {
+      return res.status(500).send("Mono error: " + JSON.stringify(data));
+    }
+
+    res.redirect(data.pageUrl);
+  } catch (err) {
+    res.status(500).send("Server error");
+  }
 });
 
-app.listen(process.env.PORT || 3000, () => {
-  console.log("Server started");
+app.post("/mono-webhook", (req, res) => {
+  console.log("Mono webhook:", req.body);
+  res.sendStatus(200);
 });
+
+app.listen(process.env.PORT || 3000);
