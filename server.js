@@ -5,17 +5,15 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// проверка
 app.get("/", (req, res) => {
   res.send("Server is working");
 });
 
-// 👉 ОСНОВНОЙ ОБРАБОТЧИК ОТ TILDA
+// 🔥 ВАЖНО: TILDA ЖДЁТ JSON
 app.post("/tilda", async (req, res) => {
   try {
     console.log("TILDA:", req.body);
 
-    // 👉 берём сумму из формы Tilda
     const amount = Number(req.body.Sum) || 100;
 
     const response = await fetch("https://api.monobank.ua/api/merchant/invoice/create", {
@@ -39,22 +37,23 @@ app.post("/tilda", async (req, res) => {
     const data = await response.json();
 
     if (!data.pageUrl) {
-      console.log("MONO ERROR:", data);
       return res.status(500).send("Mono error");
     }
 
-    // 👉 ГЛАВНОЕ: СРАЗУ РЕДИРЕКТ НА ОПЛАТУ
-    res.redirect(data.pageUrl);
+    // 👉 ВОТ КЛЮЧЕВОЕ
+    res.status(200).json({
+      success: true,
+      paymentUrl: data.pageUrl
+    });
 
   } catch (err) {
-    console.log("SERVER ERROR:", err);
+    console.log(err);
     res.status(500).send("Server error");
   }
 });
 
-// webhook от mono
 app.post("/mono-webhook", (req, res) => {
-  console.log("MONO WEBHOOK:", req.body);
+  console.log("MONO:", req.body);
   res.sendStatus(200);
 });
 
